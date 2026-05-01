@@ -9,6 +9,8 @@ import { sendMessage } from "@/lib/telegram/client";
 import { K } from "@/lib/storage/keys";
 import { appendChatEvent } from "@/lib/storage/zeroGStorage";
 import type { ChatEvent } from "@/lib/types/domain";
+import { runAgent } from "@/lib/agent/orchestrator";
+import { updateDailySummary } from "@/lib/tools/memoryTools";
 
 // 0G SDK + node crypto require the Node.js runtime.
 export const runtime = "nodejs";
@@ -69,19 +71,26 @@ export async function POST(req: Request): Promise<Response> {
   const userEvent: ChatEvent = { chatId, role: "user", content: text, at: now };
   await appendChatEvent(K.chatMessages(chatId), userEvent);
 
-  // Phase 7+ wires the orchestrator here. For now, acknowledge so the webhook
-  // loop is observable end-to-end.
-  const placeholderReply =
-    "The agent pipeline will handle this message in the next phase. " +
-    "Your message has been recorded on 0G.";
+  // Run the agent orchestrator (0G Compute + allowlisted tools only).
+  let replyText: string;
+  try {
+    const result = await runAgent({ chatId, userMessage: text });
+    replyText = result.reply;
+  } catch (err) {
+    replyText = `Sorry, something went wrong: ${(err as Error).message.slice(0, 180)}`;
+  }
+
   const replyEvent: ChatEvent = {
     chatId,
     role: "assistant",
-    content: placeholderReply,
+    content: replyText,
     at: new Date().toISOString()
   };
   await appendChatEvent(K.chatMessages(chatId), replyEvent);
-  await sendMessage(chatId, placeholderReply);
+  await sendMessage(chatId, replyText);
+
+  // Best-effort daily summary refresh (failures do not block the reply).
+  void updateDailySummary(chatId);
 
   return NextResponse.json({ ok: true });
 }
