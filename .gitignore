@@ -1,0 +1,36 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# next
+.next/
+out/
+build/
+dist/
+
+# env
+.env
+.env.*.local
+.env.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# test / coverage
+coverage/
+.vitest/
+
+# tsbuildinfo
+*.tsbuildinfo
+next-env.d.ts
+
+# requirements (local specs / PRDs)
+requirements/
