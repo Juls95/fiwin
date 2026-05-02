@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { getEnv } from "@/lib/config/env";
-import { K } from "@/lib/storage/keys";
-import { storageHealthCheck } from "@/lib/storage/zeroGStorage";
-import { computeHealthCheck } from "@/lib/agent/model0g";
 
 // 0G SDK + node crypto require the Node.js runtime.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 interface CheckResult {
   ok: boolean;
@@ -28,6 +26,19 @@ async function timed(fn: () => Promise<void>): Promise<CheckResult> {
   }
 }
 
+async function runStorageHealthCheck(): Promise<void> {
+  const [{ K }, { storageHealthCheck }] = await Promise.all([
+    import("@/lib/storage/keys"),
+    import("@/lib/storage/zeroGStorage")
+  ]);
+  await storageHealthCheck(K.health());
+}
+
+async function runComputeHealthCheck(): Promise<void> {
+  const { computeHealthCheck } = await import("@/lib/agent/model0g");
+  await computeHealthCheck();
+}
+
 /**
  * GET /api/health/0g
  *
@@ -40,31 +51,53 @@ async function timed(fn: () => Promise<void>): Promise<CheckResult> {
  * latencies, and short error messages.
  */
 export async function GET(): Promise<Response> {
-  // 1. Env validation.
-  let env: CheckResult;
   try {
-    getEnv();
-    env = { ok: true };
-  } catch (err) {
-    env = { ok: false, error: (err as Error).message.slice(0, 240) };
-  }
+    // 1. Env validation.
+    let env: CheckResult;
+    try {
+      getEnv();
+      env = { ok: true };
+    } catch (err) {
+      env = { ok: false, error: (err as Error).message.slice(0, 240) };
+    }
 
-  // If env fails, skip the other checks — they would throw the same error.
-  if (!env.ok) {
+    // If env fails, skip the other checks — they would throw the same error.
+    if (!env.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          checks: {
+            env,
+            storage: { ok: false, error: "skipped" },
+            compute: { ok: false, error: "skipped" }
+          }
+        },
+        { status: 503 }
+      );
+    }
+
+    const [storage, compute] = await Promise.all([
+      timed(runStorageHealthCheck),
+      timed(runComputeHealthCheck)
+    ]);
+
+    const ok = env.ok && storage.ok && compute.ok;
     return NextResponse.json(
-      { ok: false, checks: { env, storage: { ok: false, error: "skipped" }, compute: { ok: false, error: "skipped" } } },
+      { ok, checks: { env, storage, compute } },
+      { status: ok ? 200 : 503 }
+    );
+  } catch (err) {
+    return NextResponse.json(
+      {
+        ok: false,
+        checks: {
+          env: { ok: false, error: "unexpected health route failure" },
+          storage: { ok: false, error: "skipped" },
+          compute: { ok: false, error: "skipped" }
+        },
+        error: (err as Error).message.slice(0, 240)
+      },
       { status: 503 }
     );
   }
-
-  const [storage, compute] = await Promise.all([
-    timed(() => storageHealthCheck(K.health())),
-    timed(() => computeHealthCheck())
-  ]);
-
-  const ok = env.ok && storage.ok && compute.ok;
-  return NextResponse.json(
-    { ok, checks: { env, storage, compute } },
-    { status: ok ? 200 : 503 }
-  );
 }
