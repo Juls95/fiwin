@@ -68,6 +68,16 @@ Expected:
 
 If any check fails, **do not seed**. Fix connectivity first.
 
+You can also run the complete Step 14 operator sequence:
+
+```bash
+pnpm demo:ops
+```
+
+This validates env, runs 0G Storage and Compute health checks, seeds the demo
+database, and sets the Telegram webhook. It stops on the first failure and never
+prints secrets.
+
 ---
 
 ## 5. Seed the demo database
@@ -89,6 +99,12 @@ pnpm tsx scripts/setWebhook.ts
 ```
 
 This sets the webhook URL to `{PUBLIC_APP_URL}/api/telegram` with the secret header.
+
+If Corepack blocks `pnpm` locally, use the already-installed project binary:
+
+```bash
+./node_modules/.bin/tsx scripts/demo.ts
+```
 
 ---
 

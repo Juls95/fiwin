@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 /**
  * Centralized, fail-fast environment validation.
@@ -6,6 +8,41 @@ import { z } from "zod";
  * Imported ONLY from server-side code. Never from components marked "use client".
  * If any required variable is missing or malformed, the process throws at boot.
  */
+
+let loadedDotEnv = false;
+
+function parseEnvLine(line: string): { key: string; value: string } | null {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith("#")) return null;
+
+  const eq = trimmed.indexOf("=");
+  if (eq <= 0) return null;
+
+  const key = trimmed.slice(0, eq).trim();
+  let value = trimmed.slice(eq + 1).trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return null;
+
+  const quote = value[0];
+  if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
+    value = value.slice(1, -1);
+  }
+
+  return { key, value };
+}
+
+function loadLocalEnvIfPresent(): void {
+  if (loadedDotEnv) return;
+  loadedDotEnv = true;
+
+  const file = path.join(process.cwd(), ".env");
+  if (!existsSync(file)) return;
+
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const parsed = parseEnvLine(line);
+    if (!parsed || process.env[parsed.key] !== undefined) continue;
+    process.env[parsed.key] = parsed.value;
+  }
+}
 
 const hex64 = /^[0-9a-fA-F]{64}$/;
 const hexPrivateKey = /^0x[0-9a-fA-F]{64}$/;
@@ -51,6 +88,7 @@ export type Env = z.infer<typeof EnvSchema>;
 let cached: Env | null = null;
 
 export function getEnv(): Env {
+  loadLocalEnvIfPresent();
   if (cached) return cached;
   const parsed = EnvSchema.safeParse(process.env);
   if (!parsed.success) {

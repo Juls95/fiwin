@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx scripts/seed.ts",
-    "health": "tsx scripts/health.ts"
+    "health": "tsx scripts/health.ts",
+    "demo:ops": "tsx scripts/demo.ts"
   },
   "dependencies": {
     "@0glabs/0g-serving-broker": "0.7.5",
